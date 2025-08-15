@@ -1,0 +1,52 @@
+{
+  "name": "xmlitz",
+  "version": "2.0.0",
+  "description": "Sistema empresarial modular para automação de downloads de XMLs NFSe usando Puppeteer",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "cross-env NODE_ENV=development nodemon src/index.js",
+    "prod": "cross-env NODE_ENV=production node src/index.js",
+    "test": "cross-env NODE_ENV=test node src/index.js",
+    "api": "node src/api/server.js",
+    "api:dev": "cross-env NODE_ENV=development nodemon src/api/server.js",
+    "api:prod": "cross-env NODE_ENV=production node src/api/server.js",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix",
+    "test:unit": "node src/test/unit-tests.js",
+    "test:integration": "node src/test/integration-tests.js",
+    "build": "echo Build completed",
+    "clean": "node src/scripts/clean.js"
+  },
+  "keywords": [
+    "nfse",
+    "puppeteer",
+    "automation",
+    "xml",
+    "downloads",
+    "api"
+  ],
+  "author": "XMLitz Team",
+  "license": "MIT",
+  "dependencies": {
+    "compression": "^1.7.4",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "fs-extra": "^11.1.1",
+    "helmet": "^7.0.0",
+    "moment": "^2.29.4",
+    "node-cron": "^3.0.2",
+    "puppeteer": "^24.16.2",
+    "uuid": "^9.0.0",
+    "winston": "^3.10.0"
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3",
+    "eslint": "^8.45.0",
+    "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
