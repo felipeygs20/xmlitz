@@ -163,6 +163,19 @@ export class DownloadService {
         this.organizedDownloadPath = path;
         this.logger.debug('Path organizado definido', { path });
     }
+
+    /**
+     * Define o path específico para uma competência
+     */
+    setCompetenciaPath(competenciaPath) {
+        this.competenciaPath = competenciaPath;
+        this.logger.info(`📁 Diretório de competência definido: ${competenciaPath}`);
+
+        // Atualizar o FileManager para usar o path da competência
+        if (this.fileManager) {
+            this.fileManager.setCompetenciaPath(competenciaPath);
+        }
+    }
     
     /**
      * Executa download de todos os XMLs de uma página

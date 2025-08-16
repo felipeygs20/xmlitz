@@ -10,6 +10,7 @@ export class FileManagerService {
         this.fs = null;
         this.path = null;
         this.crypto = null;
+        this.competenciaPath = null; // Path específico da competência atual
     }
 
     /**
@@ -40,13 +41,40 @@ export class FileManagerService {
     }
 
     /**
+     * Define o path específico para uma competência
+     */
+    setCompetenciaPath(competenciaPath) {
+        this.competenciaPath = competenciaPath;
+        this.logger.info(`📁 FileManager configurado para competência: ${competenciaPath}`);
+    }
+
+    /**
+     * Obtém o path base considerando a competência atual
+     */
+    getBasePath() {
+        if (this.competenciaPath) {
+            return this.competenciaPath;
+        }
+        return this.config.get('download.path');
+    }
+
+    /**
      * Cria estrutura de diretórios para um CNPJ específico
      */
     async createCNPJStructure(cnpj, startDate) {
         try {
-            const baseDownloadPath = this.config.get('download.path');
+            const baseDownloadPath = this.getBasePath();
+
+            // Se já temos um path de competência, usar diretamente
+            if (this.competenciaPath) {
+                const cnpjPath = this.buildPath(baseDownloadPath, cnpj);
+                await this.fs.ensureDir(cnpjPath);
+                this.logger.debug(`📁 Estrutura CNPJ criada: ${cnpjPath}`);
+                return cnpjPath;
+            }
+
+            // Caso contrário, usar a lógica original
             const [year, month] = startDate.split('-');
-            
             const cnpjPath = this.buildPath(baseDownloadPath, year, month, cnpj);
             
             // Verificar se diretório já existe
@@ -537,19 +565,34 @@ export class FileManagerService {
     }
 
     /**
-     * Move arquivo para estrutura organizada com verificação de duplicatas
+     * Move arquivo para estrutura organizada com verificação de duplicatas e competência
      */
     async organizeFile(sourceFile, cnpj, startDate) {
         try {
             const fileName = this.path.basename(sourceFile);
-            const cnpjPath = await this.createCNPJStructure(cnpj, startDate);
-            
+
+            // Extrair competência real do arquivo XML
+            const realCompetencia = await this.extractCompetenciaFromXML(sourceFile);
+            const finalStartDate = realCompetencia || startDate;
+
+            if (realCompetencia && realCompetencia !== startDate) {
+                this.logger.info('📅 Competência real detectada no XML', {
+                    fileName,
+                    cnpj: this.maskCNPJ(cnpj),
+                    startDateOriginal: startDate,
+                    competenciaReal: realCompetencia
+                });
+            }
+
+            const cnpjPath = await this.createCNPJStructure(cnpj, finalStartDate);
+
             // Verificar se arquivo já existe por nome exato
             const fileExists = await this.checkFileExists(fileName, cnpjPath);
             if (fileExists) {
                 this.logger.info('🔄 Arquivo já existe (nome exato), removendo temporário', {
                     fileName,
-                    cnpj: this.maskCNPJ(cnpj)
+                    cnpj: this.maskCNPJ(cnpj),
+                    competencia: finalStartDate
                 });
                 await this.fs.remove(sourceFile);
                 return { skipped: true, reason: 'file_exists', fileName };
@@ -596,15 +639,23 @@ export class FileManagerService {
             // Mover arquivo para estrutura organizada
             const targetPath = this.path.join(cnpjPath, fileName);
             await this.fs.move(sourceFile, targetPath);
-            
-            this.logger.success('Arquivo organizado com sucesso', {
+
+            this.logger.success('📁 Arquivo organizado com sucesso', {
                 fileName,
                 cnpj: this.maskCNPJ(cnpj),
-                targetPath: targetPath.replace(this.config.get('download.path'), 'downloads')
+                competencia: finalStartDate,
+                targetPath: targetPath.replace(this.config.get('download.path'), 'downloads'),
+                competenciaDetectada: realCompetencia ? 'sim' : 'não'
             });
-            
-            return { organized: true, fileName, targetPath };
-            
+
+            return {
+                organized: true,
+                fileName,
+                targetPath,
+                competencia: finalStartDate,
+                competenciaDetectada: !!realCompetencia
+            };
+
         } catch (error) {
             this.logger.error('Erro ao organizar arquivo', {
                 sourceFile,
@@ -705,9 +756,69 @@ export class FileManagerService {
     /**
      * Constrói caminho do diretório usando path.join (melhores práticas)
      */
-    buildPath(base, year, month, cnpj) {
+    buildPath(base, ...segments) {
         // Usar path.join para garantir separadores corretos
-        return this.path.join(base, year, month, cnpj);
+        return this.path.join(base, ...segments);
+    }
+
+    /**
+     * Extrai competência real do arquivo XML
+     */
+    async extractCompetenciaFromXML(filePath) {
+        try {
+            // Ler conteúdo do arquivo XML
+            const xmlContent = await this.fs.readFile(filePath, 'utf8');
+
+            // Buscar por diferentes padrões de data/competência
+            const patterns = [
+                // Padrão 1: <Competencia>2025-07-04 17:28:26.910071</Competencia>
+                /<Competencia>(\d{4}-\d{2}-\d{2})/i,
+                // Padrão 2: <DataEmissao>2025-07-04 17:28:27</DataEmissao>
+                /<DataEmissao>(\d{4}-\d{2}-\d{2})/i,
+                // Padrão 3: <DataEmissaoRps>2025-07-04</DataEmissaoRps>
+                /<DataEmissaoRps>(\d{4}-\d{2}-\d{2})/i,
+                // Padrão 4: Qualquer data no formato YYYY-MM-DD
+                /(\d{4}-\d{2}-\d{2})/
+            ];
+
+            for (const pattern of patterns) {
+                const match = xmlContent.match(pattern);
+                if (match && match[1]) {
+                    const dateStr = match[1];
+
+                    // Validar se é uma data válida
+                    const date = new Date(dateStr);
+                    if (!isNaN(date.getTime())) {
+                        // Retornar no formato YYYY-MM-DD
+                        const year = date.getFullYear();
+                        const month = String(date.getMonth() + 1).padStart(2, '0');
+                        const competencia = `${year}-${month}-01`;
+
+                        this.logger.debug('🔍 Competência extraída do XML', {
+                            arquivo: this.path.basename(filePath),
+                            dataEncontrada: dateStr,
+                            competenciaFinal: competencia,
+                            padrao: pattern.source
+                        });
+
+                        return competencia;
+                    }
+                }
+            }
+
+            this.logger.debug('⚠️ Nenhuma competência válida encontrada no XML', {
+                arquivo: this.path.basename(filePath)
+            });
+
+            return null;
+
+        } catch (error) {
+            this.logger.warn('Erro ao extrair competência do XML', {
+                arquivo: this.path.basename(filePath),
+                error: error.message
+            });
+            return null;
+        }
     }
 
     /**

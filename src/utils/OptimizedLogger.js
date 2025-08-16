@@ -187,7 +187,16 @@ export class OptimizedLogger {
     info(message, data = {}) {
         this.log('INFO', 'SYS', message, data);
     }
-    
+
+    /**
+     * Log de trace (mais detalhado que debug)
+     */
+    trace(message, data = {}) {
+        if (this.config.enableDebugLogs) {
+            this.log('TRACE', 'SYS', `🔍 ${message}`, data);
+        }
+    }
+
     /**
      * Log de requisições HTTP (apenas se habilitado)
      */

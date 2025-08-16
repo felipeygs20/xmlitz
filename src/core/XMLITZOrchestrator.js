@@ -171,78 +171,49 @@ export class XMLITZOrchestrator {
     }
     
     /**
-     * Executa busca e download com paginação
+     * Executa busca e download por competências
      */
     async executeSearchAndDownload() {
         try {
-            this.logger.info('Iniciando busca e download');
-            
-            let currentPage = 1;
-            let hasMorePages = true;
-            
-            while (hasMorePages) {
-                this.logger.progress(`Processando página ${currentPage}`);
-                
-                // Executar busca na página atual
-                const searchResult = await this.searchService.searchPage(currentPage);
-                
-                if (!searchResult.success) {
-                    this.logger.warn(`Falha na busca da página ${currentPage}`);
-                    break;
+            this.logger.info('Iniciando busca e download por competências');
+
+            // Dividir período em competências mensais
+            const competencias = this.generateMonthlyPeriods();
+            this.logger.info(`Processando ${competencias.length} competências`, {
+                competencias: competencias.map(c => `${c.year}/${c.month}`)
+            });
+
+            // Processar cada competência separadamente
+            for (let i = 0; i < competencias.length; i++) {
+                const competencia = competencias[i];
+                this.logger.info(`🗓️ Processando competência ${i + 1}/${competencias.length}: ${competencia.year}/${competencia.month}`);
+
+                try {
+                    await this.processCompetencia(competencia);
+                } catch (error) {
+                    this.logger.error(`Erro ao processar competência ${competencia.year}/${competencia.month}`, {
+                        error: error.message
+                    });
+                    // Continuar com próxima competência
+                    continue;
                 }
-                
-                // Contar notas encontradas
-                const noteCount = await this.searchService.countNotes();
-                this.stats.notesFound += noteCount;
-                
-                if (noteCount === 0) {
-                    this.logger.info(`Página ${currentPage} não possui notas - fim da busca`);
-                    break;
-                }
-                
-                this.logger.info(`Encontradas ${noteCount} notas na página ${currentPage}`);
-                
-                // Executar downloads da página
-                const downloadResult = await this.downloadService.downloadPageXMLs(noteCount);
-                
-                this.stats.xmlsDownloaded += downloadResult.successful;
-                this.stats.failures += downloadResult.failed;
-                this.stats.pagesProcessed++;
-                
-                this.logger.progress(`Página ${currentPage} processada`, {
-                    successful: downloadResult.successful,
-                    failed: downloadResult.failed,
-                    total: noteCount
-                });
-                
-                // Verificar se há mais páginas
-                hasMorePages = await this.searchService.hasNextPage();
-                
-                if (hasMorePages) {
-                    currentPage++;
-                    
-                    // Limite de segurança
-                    if (currentPage > 100) {
-                        this.logger.warn('Limite de segurança atingido (100 páginas)');
-                        break;
-                    }
-                    
-                    // Aguardar entre páginas
-                    await this.wait(2000);
-                } else {
-                    this.logger.info('Última página processada');
+
+                // Aguardar entre competências para evitar sobrecarga
+                if (i < competencias.length - 1) {
+                    await this.wait(3000);
                 }
             }
-            
-            this.logger.success('Busca e download concluídos', {
+
+            this.logger.success('Busca e download de todas as competências concluídos', {
+                competenciasProcessadas: competencias.length,
                 pagesProcessed: this.stats.pagesProcessed,
                 notesFound: this.stats.notesFound,
                 xmlsDownloaded: this.stats.xmlsDownloaded,
                 failures: this.stats.failures
             });
-            
+
         } catch (error) {
-            this.logger.error('Falha na busca e download');
+            this.logger.error('Falha na busca e download por competências');
             throw new Error(`Erro na busca e download: ${error.message}`);
         }
     }
@@ -298,7 +269,161 @@ export class XMLITZOrchestrator {
             this.logger.error('Erro na limpeza de recursos', { error: error.message });
         }
     }
-    
+
+    /**
+     * Gera períodos mensais baseado na configuração de datas
+     */
+    generateMonthlyPeriods() {
+        const searchPeriod = this.config.get('searchPeriod');
+        const startDate = new Date(searchPeriod.startDate);
+        const endDate = new Date(searchPeriod.endDate);
+
+        const periods = [];
+        const current = new Date(startDate);
+
+        // Ajustar para o primeiro dia do mês
+        current.setDate(1);
+
+        while (current <= endDate) {
+            const year = current.getFullYear();
+            const month = String(current.getMonth() + 1).padStart(2, '0');
+
+            // Calcular último dia do mês
+            const lastDay = new Date(year, current.getMonth() + 1, 0).getDate();
+
+            // Determinar data de início e fim para este mês
+            let monthStartDate, monthEndDate;
+
+            if (current.getFullYear() === startDate.getFullYear() &&
+                current.getMonth() === startDate.getMonth()) {
+                // Primeiro mês: usar data de início original
+                monthStartDate = `${year}-${month}-${String(startDate.getDate()).padStart(2, '0')}`;
+            } else {
+                // Outros meses: começar do dia 1
+                monthStartDate = `${year}-${month}-01`;
+            }
+
+            if (current.getFullYear() === endDate.getFullYear() &&
+                current.getMonth() === endDate.getMonth()) {
+                // Último mês: usar data de fim original
+                monthEndDate = `${year}-${month}-${String(endDate.getDate()).padStart(2, '0')}`;
+            } else {
+                // Outros meses: terminar no último dia
+                monthEndDate = `${year}-${month}-${String(lastDay).padStart(2, '0')}`;
+            }
+
+            periods.push({
+                year: year.toString(),
+                month: month,
+                startDate: monthStartDate,
+                endDate: monthEndDate
+            });
+
+            // Avançar para o próximo mês
+            current.setMonth(current.getMonth() + 1);
+        }
+
+        return periods;
+    }
+
+    /**
+     * Processa uma competência específica
+     */
+    async processCompetencia(competencia) {
+        this.logger.info(`📅 Iniciando processamento da competência ${competencia.year}/${competencia.month}`);
+        this.logger.info(`🗓️ Período: ${competencia.startDate} a ${competencia.endDate}`);
+
+        try {
+            // Configurar período de busca específico para esta competência
+            await this.searchService.setSearchPeriod(competencia.startDate, competencia.endDate);
+
+            // Configurar diretório de download específico para esta competência
+            const competenciaPath = `downloads/${competencia.year}/${competencia.month}`;
+            await this.downloadService.setCompetenciaPath(competenciaPath);
+
+            let currentPage = 1;
+            let hasMorePages = true;
+            let competenciaStats = {
+                pagesProcessed: 0,
+                notesFound: 0,
+                xmlsDownloaded: 0,
+                failures: 0
+            };
+
+            while (hasMorePages) {
+                this.logger.progress(`📊 Processando página ${currentPage} da competência ${competencia.year}/${competencia.month}`);
+
+                // Executar busca na página atual com período específico
+                const searchResult = await this.searchService.searchPage(currentPage);
+
+                if (!searchResult.success) {
+                    this.logger.warn(`Falha na busca da página ${currentPage} para competência ${competencia.year}/${competencia.month}`);
+                    break;
+                }
+
+                // Contar notas encontradas
+                const noteCount = await this.searchService.countNotes();
+                competenciaStats.notesFound += noteCount;
+                this.stats.notesFound += noteCount;
+
+                if (noteCount === 0) {
+                    this.logger.info(`Página ${currentPage} da competência ${competencia.year}/${competencia.month} não possui notas - fim da busca`);
+                    break;
+                }
+
+                this.logger.info(`Encontradas ${noteCount} notas na página ${currentPage} da competência ${competencia.year}/${competencia.month}`);
+
+                // Executar downloads da página diretamente para o diretório correto
+                const downloadResult = await this.downloadService.downloadPageXMLs(noteCount);
+
+                competenciaStats.xmlsDownloaded += downloadResult.successful;
+                competenciaStats.failures += downloadResult.failed;
+                competenciaStats.pagesProcessed++;
+
+                this.stats.xmlsDownloaded += downloadResult.successful;
+                this.stats.failures += downloadResult.failed;
+                this.stats.pagesProcessed++;
+
+                this.logger.progress(`📊 Página ${currentPage} processada`, {
+                    competencia: `${competencia.year}/${competencia.month}`,
+                    successful: downloadResult.successful,
+                    failed: downloadResult.failed,
+                    total: noteCount,
+                    path: competenciaPath
+                });
+
+                // Verificar se há mais páginas
+                hasMorePages = await this.searchService.hasNextPage();
+
+                if (hasMorePages) {
+                    currentPage++;
+
+                    // Limite de segurança
+                    if (currentPage > 100) {
+                        this.logger.warn('Limite de segurança atingido (100 páginas)');
+                        break;
+                    }
+
+                    // Aguardar entre páginas
+                    await this.wait(2000);
+                } else {
+                    this.logger.info(`Última página da competência ${competencia.year}/${competencia.month} processada`);
+                }
+            }
+
+            this.logger.success(`✅ Competência ${competencia.year}/${competencia.month} concluída`, {
+                ...competenciaStats,
+                path: competenciaPath
+            });
+
+        } catch (error) {
+            this.logger.error(`Erro ao processar competência ${competencia.year}/${competencia.month}`, {
+                error: error.message
+            });
+            throw error;
+        }
+    }
+
     /**
      * Utilitário para aguardar
      */
