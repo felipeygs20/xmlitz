@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # 🚀 NFSe XML Downloader
 
 Sistema automatizado para download e organização de arquivos XML de Notas Fiscais de Serviços Eletrônicos (NFSe) do sistema Prefeitura Moderna.
@@ -207,3 +208,6 @@ Para suporte e dúvidas:
 ---
 
 ⭐ **Se este projeto foi útil, considere dar uma estrela!**
+=======
+# xmlitz
+>>>>>>> 1991233c4eb033a979d3ac5a4fd83bc8e5cce48e
