@@ -3,11 +3,11 @@
  * Otimiza verificações de duplicatas e operações repetitivas
  */
 
-import { Logger } from '../utils/Logger.js';
+import { logger } from '../utils/OptimizedLogger.js';
 
 export class CacheManager {
     constructor() {
-        this.logger = Logger.getInstance();
+        this.logger = logger;
         
         // Cache de arquivos existentes por CNPJ
         this.fileCache = new Map();

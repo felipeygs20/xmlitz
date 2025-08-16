@@ -31,14 +31,101 @@ const upload = multer({
 
 // Instância do serviço de ingestão
 let ingestService = null;
+let initializationPromise = null;
+let isInitialized = false;
 
-// Inicializar serviço
+// Fila de requisições pendentes durante inicialização
+const pendingRequests = [];
+
+// Inicializar serviço com proteção contra múltiplas inicializações
 async function initializeService() {
-    if (!ingestService) {
-        ingestService = new NFSeIngestService();
-        await ingestService.initialize();
+    if (ingestService && isInitialized) {
+        return ingestService;
     }
+
+    // Se já está inicializando, aguardar a inicialização em andamento
+    if (initializationPromise) {
+        await initializationPromise;
+        return ingestService;
+    }
+
+    // Inicializar apenas uma vez
+    initializationPromise = (async () => {
+        try {
+            logger.system('Banco de dados NFSe inicializado');
+            ingestService = new NFSeIngestService();
+            await ingestService.initialize();
+            isInitialized = true;
+            logger.system('Serviço de ingestão NFSe inicializado');
+
+            // Processar requisições pendentes
+            await processPendingRequests();
+
+        } catch (error) {
+            logger.error('Erro ao inicializar serviço de ingestão NFSe', {
+                error: error.message
+            });
+            ingestService = null;
+            initializationPromise = null;
+            isInitialized = false;
+            throw error;
+        }
+    })();
+
+    await initializationPromise;
     return ingestService;
+}
+
+// Processar requisições que ficaram na fila durante inicialização
+async function processPendingRequests() {
+    if (pendingRequests.length === 0) return;
+
+    logger.system(`Processando ${pendingRequests.length} requisições pendentes`);
+
+    const requests = [...pendingRequests];
+    pendingRequests.length = 0; // Limpar fila
+
+    for (const request of requests) {
+        try {
+            await request.handler();
+            logger.system('Requisição pendente processada com sucesso');
+        } catch (error) {
+            logger.error('Erro ao processar requisição pendente', {
+                error: error.message
+            });
+            request.reject(error);
+        }
+    }
+}
+
+// Wrapper para garantir que requisições não sejam perdidas
+async function safeServiceCall(handler, fallbackResponse = null) {
+    if (isInitialized && ingestService) {
+        // Serviço já inicializado, executar diretamente
+        return await handler(ingestService);
+    }
+
+    // Serviço não inicializado, enfileirar requisição
+    return new Promise((resolve, reject) => {
+        const request = {
+            handler: async () => {
+                try {
+                    const result = await handler(ingestService);
+                    resolve(result);
+                } catch (error) {
+                    reject(error);
+                }
+            },
+            reject,
+            timestamp: Date.now()
+        };
+
+        pendingRequests.push(request);
+        logger.system('Requisição enfileirada durante inicialização');
+
+        // Inicializar serviço se ainda não foi iniciado
+        initializeService().catch(reject);
+    });
 }
 
 /**
@@ -47,8 +134,9 @@ async function initializeService() {
  */
 router.get('/stats', async (req, res) => {
     try {
-        const service = await initializeService();
-        const stats = await service.getGeneralStats();
+        const stats = await safeServiceCall(async (service) => {
+            return await service.getGeneralStats();
+        });
 
         res.json({
             success: true,
@@ -70,9 +158,10 @@ router.get('/stats', async (req, res) => {
  */
 router.get('/stats/cnpj', async (req, res) => {
     try {
-        const service = await initializeService();
         const limit = parseInt(req.query.limit) || 50;
-        const stats = await service.getStatsByCNPJ(limit);
+        const stats = await safeServiceCall(async (service) => {
+            return await service.getStatsByCNPJ(limit);
+        });
 
         res.json({
             success: true,
@@ -129,9 +218,10 @@ router.get('/stats/cnpj/:cnpj', async (req, res) => {
  */
 router.get('/stats/competencia', async (req, res) => {
     try {
-        const service = await initializeService();
         const limit = parseInt(req.query.limit) || 24;
-        const stats = await service.getStatsByCompetencia(limit);
+        const stats = await safeServiceCall(async (service) => {
+            return await service.getStatsByCompetencia(limit);
+        });
 
         res.json({
             success: true,
@@ -207,8 +297,9 @@ router.get('/stats/competencia/:ano/:mes?', async (req, res) => {
  */
 router.get('/stats/downloads', async (req, res) => {
     try {
-        const service = await initializeService();
-        const stats = await service.getDownloadStatsByCNPJ();
+        const stats = await safeServiceCall(async (service) => {
+            return await service.getDownloadStatsByCNPJ();
+        });
 
         res.json({
             success: true,

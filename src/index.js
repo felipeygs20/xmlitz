@@ -10,14 +10,14 @@
 
 import { XMLITZOrchestrator } from './core/XMLITZOrchestrator.js';
 import { ConfigManager } from './config/ConfigManager.js';
-import { Logger } from './utils/Logger.js';
+import { logger } from './utils/OptimizedLogger.js';
 import { ErrorHandler } from './utils/ErrorHandler.js';
 
 /**
  * Função principal do CLI
  */
 async function main() {
-    const logger = Logger.getInstance();
+    const loggerInstance = logger;
     const errorHandler = ErrorHandler.getInstance();
 
     try {
@@ -44,7 +44,7 @@ async function main() {
         config.set('credentials.username', credentials.username);
         config.set('credentials.password', credentials.password);
 
-        logger.info('Sistema XMLITZ iniciado', {
+        loggerInstance.info('Sistema XMLITZ iniciado', {
             version: '2.0.0',
             environment: process.env.NODE_ENV || 'development',
             cnpj: maskCNPJ(credentials.username)
@@ -56,7 +56,7 @@ async function main() {
         
         // Verificar resultados
         if (report.success && report.xmlsDownloaded > 0) {
-            logger.info('Execução finalizada com sucesso', {
+            loggerInstance.info('Execução finalizada com sucesso', {
                 xmlsDownloaded: report.xmlsDownloaded,
                 duration: report.duration
             });
@@ -65,7 +65,7 @@ async function main() {
             console.log(`📁 ${report.xmlsDownloaded} XMLs baixados em ${report.duration}s`);
             process.exit(0);
         } else {
-            logger.warn('Nenhum XML foi baixado', report);
+            loggerInstance.warn('Nenhum XML foi baixado', report);
             console.log('\n⚠️ Nenhum XML foi baixado.');
             console.log('💡 Verifique as credenciais e o período de pesquisa.');
             process.exit(1);

@@ -3,13 +3,13 @@
  * Gerencia todos os tipos de erros do sistema de forma consistente
  */
 
-import { Logger } from './Logger.js';
+import { logger } from './OptimizedLogger.js';
 
 export class ErrorHandler {
     static instance = null;
     
     constructor() {
-        this.logger = Logger.getInstance();
+        this.logger = logger;
         this.errorCounts = new Map();
         this.maxRetries = 3;
     }

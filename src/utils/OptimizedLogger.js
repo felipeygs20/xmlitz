@@ -47,6 +47,9 @@ export class OptimizedLogger {
             enableRequestLogs: false,    // Logs de requisições HTTP (desabilitado por padrão)
             enableDebugLogs: false       // Logs de debug (desabilitado por padrão)
         };
+
+        // Timers de performance
+        this.performanceTimers = new Map();
         
         this.initializeLogDirectory();
     }
@@ -324,12 +327,12 @@ export class OptimizedLogger {
             const files = await fs.readdir(this.logDir);
             const cutoffDate = new Date();
             cutoffDate.setDate(cutoffDate.getDate() - daysToKeep);
-            
+
             for (const file of files) {
                 if (file.startsWith('xmlitz-') && file.endsWith('.log')) {
                     const filePath = path.join(this.logDir, file);
                     const stats = await fs.stat(filePath);
-                    
+
                     if (stats.mtime < cutoffDate) {
                         await fs.remove(filePath);
                         console.log(`🗑️ Log antigo removido: ${file}`);
@@ -339,6 +342,49 @@ export class OptimizedLogger {
         } catch (error) {
             console.error('❌ Erro ao limpar logs antigos:', error.message);
         }
+    }
+
+    /**
+     * Inicia um timer de performance
+     */
+    startTimer(name) {
+        this.performanceTimers.set(name, {
+            start: Date.now(),
+            name: name
+        });
+
+        if (this.config.enableDebugLogs) {
+            this.debug(`⏱️ Timer iniciado: ${name}`);
+        }
+    }
+
+    /**
+     * Para um timer e registra o tempo decorrido
+     */
+    endTimer(name, context = {}) {
+        const timer = this.performanceTimers.get(name);
+        if (!timer) {
+            this.warn(`Timer não encontrado: ${name}`);
+            return 0;
+        }
+
+        const duration = Date.now() - timer.start;
+        this.performanceTimers.delete(name);
+
+        this.performance(name, duration, context);
+
+        return duration;
+    }
+
+    /**
+     * Registra métricas de performance
+     */
+    performance(operation, duration, context = {}) {
+        const durationStr = typeof duration === 'number' ? `${duration}ms` : duration;
+        this.log('INFO', 'SYS', `⚡ Performance: ${operation}`, {
+            duration: durationStr,
+            ...context
+        });
     }
 }
 

@@ -3,12 +3,12 @@
  * Responsável por endpoints de informações da API
  */
 
-import { Logger } from '../../utils/Logger.js';
+import { logger } from '../../utils/OptimizedLogger.js';
 
 export class StatusController {
     constructor(config) {
         this.config = config;
-        this.logger = Logger.getInstance();
+        this.logger = logger;
     }
     
     /**

@@ -5,13 +5,13 @@
 
 import fs from 'fs-extra';
 import path from 'path';
-import { Logger } from '../utils/Logger.js';
+import { logger } from '../utils/OptimizedLogger.js';
 
 export class ConfigManager {
     static instance = null;
     
     constructor() {
-        this.logger = Logger.getInstance();
+        this.logger = logger;
         this.config = {};
         this.defaultConfig = this.getDefaultConfig();
         this.configFile = path.join(process.cwd(), 'xmlitz.config.js');

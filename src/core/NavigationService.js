@@ -3,13 +3,13 @@
  * Responsável por navegar entre as diferentes seções do sistema
  */
 
-import { Logger } from '../utils/Logger.js';
+import { logger } from '../utils/OptimizedLogger.js';
 import { ErrorHandler } from '../utils/ErrorHandler.js';
 
 export class NavigationService {
     constructor(configManager) {
         this.config = configManager;
-        this.logger = Logger.getInstance();
+        this.logger = logger;
         this.errorHandler = ErrorHandler.getInstance();
         
         this.browser = null;

@@ -3,12 +3,12 @@
  * Responsável por verificações de saúde da aplicação
  */
 
-import { Logger } from '../../utils/Logger.js';
+import { logger } from '../../utils/OptimizedLogger.js';
 
 export class HealthController {
     constructor(config) {
         this.config = config;
-        this.logger = Logger.getInstance();
+        this.logger = logger;
     }
     
     /**

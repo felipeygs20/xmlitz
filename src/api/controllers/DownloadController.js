@@ -3,7 +3,7 @@
  * Responsável por endpoints de inicialização de downloads
  */
 
-import { Logger } from '../../utils/Logger.js';
+import { logger } from '../../utils/OptimizedLogger.js';
 import { ErrorHandler } from '../../utils/ErrorHandler.js';
 import { RequestValidator } from '../validators/RequestValidator.js';
 
@@ -11,7 +11,7 @@ export class DownloadController {
     constructor(config, executionManager) {
         this.config = config;
         this.executionManager = executionManager;
-        this.logger = Logger.getInstance();
+        this.logger = logger;
         this.errorHandler = ErrorHandler.getInstance();
         this.validator = new RequestValidator();
     }
