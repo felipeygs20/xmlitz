@@ -1,63 +1,42 @@
 {
-  "name": "xmlitz",
+  "name": "xmlitz-nfse-downloader",
   "version": "2.0.0",
-  "description": "Sistema empresarial modular para automação de downloads de XMLs NFSe usando Puppeteer",
-  "main": "src/index.js",
-  "type": "module",
+  "description": "Sistema automatizado para download e organização de arquivos XML de Notas Fiscais de Serviços Eletrônicos (NFSe) do sistema Prefeitura Moderna",
+  "main": "nfse-downloader.js",
   "scripts": {
-    "start": "node src/index.js",
-    "dev": "concurrently \"npm run backend:dev\" \"npm run frontend:dev\"",
-    "backend:dev": "cross-env NODE_ENV=development nodemon src/api/server.js",
-    "frontend:dev": "cd frontend && npm run dev",
-    "backend": "node src/api/server.js",
-    "frontend": "cd frontend && npm run build && npm run start",
-    "install:all": "npm install && cd frontend && npm install",
-    "build": "cd frontend && npm run build",
-    "prod": "cross-env NODE_ENV=production node src/index.js",
-    "test": "cross-env NODE_ENV=test node src/index.js",
-    "api": "node src/api/server.js",
-    "api:dev": "cross-env NODE_ENV=development nodemon src/api/server.js",
-    "api:prod": "cross-env NODE_ENV=production node src/api/server.js",
-    "lint": "eslint src/",
-    "lint:fix": "eslint src/ --fix",
-    "test:unit": "node src/test/unit-tests.js",
-    "test:integration": "node src/test/integration-tests.js",
-    "clean": "node src/scripts/clean.js"
+    "start": "node nfse-downloader.js",
+    "download": "node nfse-downloader.js",
+    "organize": "node organize-xmls.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "puppeteer": "^24.16.2"
+  },
+  "engines": {
+    "node": ">=16.0.0"
   },
   "keywords": [
     "nfse",
-    "puppeteer",
-    "automation",
     "xml",
-    "downloads",
-    "api"
+    "downloader",
+    "automation",
+    "prefeitura-moderna",
+    "nota-fiscal",
+    "puppeteer",
+    "web-scraping",
+    "organização",
+    "hierarquia",
+    "competencia",
+    "cnpj"
   ],
-  "author": "XMLitz Team",
+  "author": "Felipe",
   "license": "MIT",
-  "dependencies": {
-    "archiver": "^7.0.1",
-    "better-sqlite3": "^12.2.0",
-    "compression": "^1.7.4",
-    "cors": "^2.8.5",
-    "express": "^4.21.2",
-    "fast-xml-parser": "^5.2.5",
-    "fs-extra": "^11.1.1",
-    "helmet": "^7.0.0",
-    "moment": "^2.29.4",
-    "multer": "^2.0.2",
-    "node-cron": "^3.0.2",
-    "node-fetch": "^3.3.2",
-    "puppeteer": "^24.16.2",
-    "uuid": "^9.0.0",
-    "winston": "^3.10.0"
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fvfelipeo/xmlitz.git"
   },
-  "devDependencies": {
-    "concurrently": "^8.2.2",
-    "cross-env": "^7.0.3",
-    "eslint": "^8.45.0",
-    "nodemon": "^3.0.1"
+  "bugs": {
+    "url": "https://github.com/fvfelipeo/xmlitz/issues"
   },
-  "engines": {
-    "node": ">=18.0.0"
-  }
+  "homepage": "https://github.com/fvfelipeo/xmlitz#readme"
 }
