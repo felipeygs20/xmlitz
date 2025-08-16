@@ -101,8 +101,6 @@ Thumbs.db
 *.xml
 Nfse-*.xml
 
-# Browser downloads
-downloads/
 
 # Database files
 database/*.db
