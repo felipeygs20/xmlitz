@@ -32,45 +32,168 @@ export class SearchService {
     async searchPage(pageNumber = 1) {
         try {
             this.logger.info('Executando pesquisa', { page: pageNumber });
-            
+
             if (!this.page) {
                 throw new Error('Página não está disponível');
             }
-            
+
             this.currentPage = pageNumber;
-            
-            // Construir URL de pesquisa
-            const searchUrl = this.buildSearchUrl(pageNumber);
-            
-            this.logger.debug('URL de pesquisa construída', { url: searchUrl });
-            
-            // Navegar para URL de pesquisa
-            const navigationTimeout = this.config.get('timeouts.navigation');
-            
-            await this.page.goto(searchUrl, {
-                waitUntil: 'networkidle2',
-                timeout: navigationTimeout
-            });
-            
-            // Aguardar página carregar
+
+            if (pageNumber === 1) {
+                // Primeira página: usar formulário
+                await this.fillSearchForm();
+            } else {
+                // Páginas subsequentes: usar URL direta
+                const searchUrl = this.buildSearchUrl(pageNumber);
+                this.logger.debug('URL de pesquisa construída', { url: searchUrl });
+
+                const navigationTimeout = this.config.get('timeouts.navigation');
+                await this.page.goto(searchUrl, {
+                    waitUntil: 'networkidle2',
+                    timeout: navigationTimeout
+                });
+            }
+
+            // Aguardar página carregar (tempo otimizado)
             await this.wait(3000);
-            
+
             // Verificar se a pesquisa foi bem-sucedida
             const success = await this.verifySearchResults();
-            
+
             if (success) {
                 this.logger.success('Pesquisa executada com sucesso', { page: pageNumber });
                 return { success: true, page: pageNumber };
             } else {
                 throw new Error('Falha na verificação dos resultados da pesquisa');
             }
-            
+
         } catch (error) {
             this.errorHandler.handle(error, 'search-page');
             return { success: false, page: pageNumber, error: error.message };
         }
     }
-    
+
+    /**
+     * Preenche formulário de pesquisa - VERSÃO OTIMIZADA
+     */
+    async fillSearchForm() {
+        try {
+            this.logger.info('Preenchendo formulário de pesquisa');
+
+            const searchPeriod = this.config.get('searchPeriod');
+
+            // OTIMIZAÇÃO: Não navegar novamente se já estamos na página certa
+            const currentUrl = this.page.url();
+            if (!currentUrl.includes('pg=relatorio')) {
+                const reportsUrl = 'https://imperatriz-ma.prefeituramoderna.com.br/meuiss_new/nfe/index.php?pg=relatorio';
+                await this.page.goto(reportsUrl, {
+                    waitUntil: 'domcontentloaded', // Mais rápido
+                    timeout: 15000
+                });
+            }
+
+            // OTIMIZAÇÃO: Aguardar campos com timeout reduzido
+            await this.page.waitForSelector('#dt_inicial', { timeout: 5000 });
+            await this.page.waitForSelector('#dt_final', { timeout: 5000 });
+
+            this.logger.debug('Campos de data encontrados');
+
+            // OTIMIZAÇÃO: Preenchimento direto e rápido
+            this.logger.debug('Preenchendo datas (otimizado)', {
+                startDate: searchPeriod.startDate,
+                endDate: searchPeriod.endDate
+            });
+
+            // Método otimizado: limpar e preencher diretamente
+            await this.page.evaluate((startDate, endDate) => {
+                const startField = document.querySelector('#dt_inicial');
+                const endField = document.querySelector('#dt_final');
+
+                if (startField) {
+                    startField.value = '';
+                    startField.value = startDate;
+                    startField.dispatchEvent(new Event('input', { bubbles: true }));
+                    startField.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+
+                if (endField) {
+                    endField.value = '';
+                    endField.value = endDate;
+                    endField.dispatchEvent(new Event('input', { bubbles: true }));
+                    endField.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            }, searchPeriod.startDate, searchPeriod.endDate);
+
+            this.logger.debug('Datas preenchidas (otimizado)');
+
+            // Usar locator.fill() como no script gravado
+            const endDateLocator = this.page.locator('#dt_final');
+            await endDateLocator.fill(searchPeriod.endDate);
+
+            this.logger.debug('Data final preenchida', { date: searchPeriod.endDate });
+
+            // OTIMIZAÇÃO: Aguardar menos tempo
+            await this.wait(300);
+
+            // Clicar no botão "Pesquisar Notas" (baseado no script gravado)
+            const searchButtonSelectors = [
+                'div.card-body button',                                                    // Primeiro do script
+                '#formrelatorio > div[2] > div[4] > div > div[1] > button',              // XPath convertido
+                'button:contains("Pesquisar Notas")',                                    // Texto específico
+                'button[type="submit"]',                                                  // Fallback genérico
+                'input[type="submit"][value*="Pesquisar"]'                               // Fallback input
+            ];
+
+            let buttonClicked = false;
+            for (const selector of searchButtonSelectors) {
+                try {
+                    this.logger.debug('Tentando seletor de botão pesquisar', { selector });
+
+                    if (selector.includes(':contains')) {
+                        // Usar XPath para :contains
+                        const xpath = `//button[contains(text(), 'Pesquisar')]`;
+                        const elements = await this.page.$x(xpath);
+
+                        if (elements.length > 0) {
+                            this.logger.debug('Clicando no botão pesquisar via XPath');
+                            await Promise.all([
+                                this.page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }),
+                                elements[0].click()
+                            ]);
+                            buttonClicked = true;
+                            break;
+                        }
+                    } else {
+                        await this.page.waitForSelector(selector, { timeout: 3000 }); // OTIMIZAÇÃO: timeout reduzido
+                        this.logger.debug('Clicando no botão pesquisar (otimizado)', { selector });
+                        await Promise.all([
+                            this.page.waitForNavigation({
+                                waitUntil: 'domcontentloaded', // OTIMIZAÇÃO: mais rápido
+                                timeout: 15000 // OTIMIZAÇÃO: timeout reduzido
+                            }),
+                            this.page.click(selector)
+                        ]);
+                        buttonClicked = true;
+                        break;
+                    }
+                } catch (e) {
+                    this.logger.debug('Seletor de botão falhou', { selector, error: e.message });
+                    continue;
+                }
+            }
+
+            if (!buttonClicked) {
+                throw new Error('Não foi possível encontrar o botão de pesquisa');
+            }
+
+            this.logger.success('Formulário de pesquisa preenchido e enviado');
+
+        } catch (error) {
+            this.logger.error('Erro ao preencher formulário de pesquisa', { error: error.message });
+            throw error;
+        }
+    }
+
     /**
      * Constrói URL de pesquisa com parâmetros
      */
@@ -106,27 +229,75 @@ export class SearchService {
     async verifySearchResults() {
         try {
             const currentUrl = this.page.url();
-            
+
             // Verificar se a URL contém os parâmetros de pesquisa
             const hasSearchParams = currentUrl.includes('consulta=1') &&
                                   currentUrl.includes('dt_inicial=') &&
                                   currentUrl.includes('dt_final=');
-            
+
             if (!hasSearchParams) {
-                this.logger.warn('URL não contém parâmetros de pesquisa esperados');
+                this.logger.warn('URL não contém parâmetros de pesquisa esperados', { url: currentUrl });
                 return false;
             }
-            
-            // Aguardar tabela de resultados aparecer
-            try {
-                await this.page.waitForSelector('tbody', { timeout: 10000 });
-                this.logger.debug('Tabela de resultados encontrada');
-                return true;
-            } catch (e) {
-                this.logger.warn('Tabela de resultados não encontrada');
-                return false;
+
+            this.logger.debug('URL contém parâmetros de pesquisa', { url: currentUrl });
+
+            // Verificar seletores otimizados (ordem por eficiência)
+            const resultSelectors = [
+                'tr:nth-of-type(1) button.dropdown-toggle',  // Mais específico (baseado no script)
+                'table tbody tr',                            // Genérico eficiente
+                'tbody tr',                                  // Fallback
+                'tbody'                                      // Último recurso
+            ];
+
+            for (const selector of resultSelectors) {
+                try {
+                    await this.page.waitForSelector(selector, { timeout: 2000 });
+
+                    // Verificar conteúdo apenas para seletores específicos
+                    if (selector.includes('dropdown-toggle')) {
+                        this.logger.success('Tabela de resultados encontrada com conteúdo', { selector });
+                        return true;
+                    }
+
+                    // Para outros seletores, verificar se há conteúdo
+                    const hasContent = await this.page.evaluate((sel) => {
+                        const element = document.querySelector(sel);
+                        return element && element.children.length > 0;
+                    }, selector);
+
+                    if (hasContent) {
+                        this.logger.success('Tabela de resultados encontrada', { selector });
+                        return true;
+                    }
+                } catch (e) {
+                    continue;
+                }
             }
-            
+
+            // Se chegou aqui, verificar se há mensagem de "nenhum resultado"
+            const noResultsMessages = [
+                'Nenhum resultado encontrado',
+                'Não foram encontrados',
+                'Sem resultados',
+                'No results',
+                'Nenhuma nota fiscal'
+            ];
+
+            for (const message of noResultsMessages) {
+                const hasMessage = await this.page.evaluate((msg) => {
+                    return document.body.textContent.toLowerCase().includes(msg.toLowerCase());
+                }, message);
+
+                if (hasMessage) {
+                    this.logger.info('Pesquisa executada mas sem resultados', { message });
+                    return true; // Pesquisa foi bem-sucedida, apenas sem resultados
+                }
+            }
+
+            this.logger.warn('Nenhum elemento de resultados encontrado');
+            return false;
+
         } catch (error) {
             this.logger.error('Erro na verificação dos resultados', { error: error.message });
             return false;

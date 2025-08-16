@@ -74,9 +74,9 @@ export class ConfigManager {
                 endDate: this.getCurrentMonthEnd()
             },
             timeouts: {
-                navigation: 30000,
-                element: 10000,
-                download: 5000
+                navigation: 15000,  // OTIMIZAÇÃO: Reduzido para 15s
+                element: 5000,      // OTIMIZAÇÃO: Reduzido para 5s
+                download: 2000      // OTIMIZAÇÃO: Reduzido para 2s
             },
             urls: {
                 base: 'https://imperatriz-ma.prefeituramoderna.com.br/meuiss_new/nfe/',
@@ -100,11 +100,11 @@ export class ConfigManager {
                 screenshotPath: './screenshots/'
             },
             advanced: {
-                waitBetweenDownloads: 1000,
-                maxConcurrentDownloads: 1,
+                waitBetweenDownloads: 300,   // OTIMIZAÇÃO: Reduzido para 300ms
+                maxConcurrentDownloads: 5,   // Aumentado para permitir mais downloads simultâneos
                 retryFailedDownloads: true,
                 maxRetries: 3,
-                retryDelay: 2000,
+                retryDelay: 500,             // OTIMIZAÇÃO: Reduzido para 500ms
                 skipExistingFiles: false,
                 debugMode: false
             }

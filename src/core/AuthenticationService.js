@@ -78,9 +78,9 @@ export class AuthenticationService {
                 timeout: navigationTimeout
             });
             
-            // Aguardar página carregar completamente
-            await this.wait(2000);
-            
+            // Aguardar página carregar (tempo reduzido)
+            await this.wait(1000);
+
             this.logger.debug('Navegação para login concluída');
             
         } catch (error) {
@@ -114,8 +114,8 @@ export class AuthenticationService {
             
             this.logger.debug('Campo de senha preenchido');
             
-            // Aguardar um pouco para garantir que os campos foram preenchidos
-            await this.wait(1000);
+            // Aguardar campos serem preenchidos (tempo reduzido)
+            await this.wait(500);
             
         } catch (error) {
             throw new Error(`Erro ao preencher credenciais: ${error.message}`);
@@ -137,8 +137,8 @@ export class AuthenticationService {
             
             this.logger.debug('Botão de login clicado');
             
-            // Aguardar processamento do login
-            await this.wait(5000);
+            // Aguardar processamento do login (tempo reduzido)
+            await this.wait(3000);
             
         } catch (error) {
             throw new Error(`Erro ao submeter login: ${error.message}`);
@@ -152,8 +152,8 @@ export class AuthenticationService {
         try {
             this.logger.debug('Verificando sucesso do login');
             
-            // Aguardar um pouco mais para garantir que a página carregou
-            await this.wait(3000);
+            // Aguardar página carregar após login (tempo reduzido)
+            await this.wait(2000);
             
             const currentUrl = this.page.url();
             

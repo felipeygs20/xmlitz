@@ -25,34 +25,34 @@ export class NavigationService {
     }
     
     /**
-     * Navega para a seção de relatórios
+     * Navega para a seção de relatórios - VERSÃO OTIMIZADA
      */
     async navigateToReports() {
         try {
             this.logger.info('Navegando para seção de relatórios');
-            
+
             if (!this.page) {
                 throw new Error('Página não está disponível');
             }
-            
-            // Tentar navegação via menu primeiro
+
+            // OTIMIZAÇÃO: Ir direto para URL de relatórios (mais rápido)
+            const directSuccess = await this.tryDirectNavigationOptimized();
+
+            if (directSuccess) {
+                this.logger.success('Navegação direta otimizada bem-sucedida');
+                return true;
+            }
+
+            // Fallback: tentar navegação via menu apenas se necessário
             const menuSuccess = await this.tryMenuNavigation();
-            
+
             if (menuSuccess) {
                 this.logger.success('Navegação via menu bem-sucedida');
                 return true;
             }
-            
-            // Se falhou, tentar navegação direta
-            const directSuccess = await this.tryDirectNavigation();
-            
-            if (directSuccess) {
-                this.logger.success('Navegação direta bem-sucedida');
-                return true;
-            }
-            
+
             throw new Error('Todas as tentativas de navegação falharam');
-            
+
         } catch (error) {
             this.errorHandler.handle(error, 'navigation-reports');
             return false;
@@ -122,26 +122,54 @@ export class NavigationService {
     }
     
     /**
-     * Tenta navegação direta via URL
+     * Navegação direta otimizada - EXTREMAMENTE RÁPIDA
+     */
+    async tryDirectNavigationOptimized() {
+        try {
+            this.logger.debug('Navegação direta OTIMIZADA');
+
+            const reportsUrl = this.config.get('urls.reports');
+
+            this.logger.debug('Navegando diretamente (otimizado)', { url: reportsUrl });
+
+            // OTIMIZAÇÃO: Usar waitUntil mais rápido e timeout menor
+            await this.page.goto(reportsUrl, {
+                waitUntil: 'domcontentloaded', // Mais rápido que networkidle2
+                timeout: 15000 // Timeout reduzido
+            });
+
+            // OTIMIZAÇÃO: Aguardar apenas 500ms em vez de 2000ms
+            await this.wait(500);
+
+            return await this.verifyReportsPageOptimized();
+
+        } catch (error) {
+            this.logger.warn('Erro na navegação direta otimizada', { error: error.message });
+            return false;
+        }
+    }
+
+    /**
+     * Tenta navegação direta via URL (fallback)
      */
     async tryDirectNavigation() {
         try {
             this.logger.debug('Tentando navegação direta');
-            
+
             const reportsUrl = this.config.get('urls.reports');
             const navigationTimeout = this.config.get('timeouts.navigation');
-            
+
             this.logger.debug('Navegando diretamente para relatórios', { url: reportsUrl });
-            
+
             await this.page.goto(reportsUrl, {
                 waitUntil: 'networkidle2',
                 timeout: navigationTimeout
             });
-            
+
             await this.wait(2000);
-            
+
             return await this.verifyReportsPage();
-            
+
         } catch (error) {
             this.logger.warn('Erro na navegação direta', { error: error.message });
             return false;
@@ -149,30 +177,67 @@ export class NavigationService {
     }
     
     /**
+     * Verificação de página otimizada - EXTREMAMENTE RÁPIDA
+     */
+    async verifyReportsPageOptimized() {
+        try {
+            const currentUrl = this.page.url();
+
+            this.logger.debug('Verificação OTIMIZADA da página de relatórios', { url: currentUrl });
+
+            // OTIMIZAÇÃO: Verificar URL primeiro (mais rápido)
+            if (currentUrl.includes('pg=relatorio') || currentUrl.includes('relatorio')) {
+                this.logger.debug('URL indica página de relatórios (otimizada)');
+                return true;
+            }
+
+            // OTIMIZAÇÃO: Verificar apenas elementos essenciais com timeout reduzido
+            const primarySelectors = ['#dt_inicial', '#dt_final'];
+
+            for (const selector of primarySelectors) {
+                try {
+                    await this.page.waitForSelector(selector, { timeout: 1000 }); // Timeout muito reduzido
+                    this.logger.debug('Página de relatórios verificada (otimizada)', { selector });
+                    return true;
+                } catch (e) {
+                    continue;
+                }
+            }
+
+            // Fallback para verificação completa se necessário
+            return await this.verifyReportsPage();
+
+        } catch (error) {
+            this.logger.warn('Erro na verificação otimizada', { error: error.message });
+            return false;
+        }
+    }
+
+    /**
      * Verifica se estamos na página de relatórios
      */
     async verifyReportsPage() {
         try {
             const currentUrl = this.page.url();
-            
+
             this.logger.debug('Verificando página de relatórios', { url: currentUrl });
-            
+
             // Verificar URL
             if (currentUrl.includes('pg=relatorio') || currentUrl.includes('relatorio')) {
                 this.logger.debug('URL indica página de relatórios');
                 return true;
             }
-            
+
             // Verificar elementos específicos da página de relatórios
             const hasReportElements = await this.checkReportElements();
-            
+
             if (hasReportElements) {
                 this.logger.debug('Elementos de relatório encontrados');
                 return true;
             }
-            
+
             return false;
-            
+
         } catch (error) {
             this.logger.warn('Erro na verificação da página de relatórios', { error: error.message });
             return false;

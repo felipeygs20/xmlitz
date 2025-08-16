@@ -6,7 +6,13 @@
   "type": "module",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "cross-env NODE_ENV=development nodemon src/index.js",
+    "dev": "concurrently \"npm run backend:dev\" \"npm run frontend:dev\"",
+    "backend:dev": "cross-env NODE_ENV=development nodemon src/api/server.js",
+    "frontend:dev": "cd frontend && npm run dev",
+    "backend": "node src/api/server.js",
+    "frontend": "cd frontend && npm run build && npm run start",
+    "install:all": "npm install && cd frontend && npm install",
+    "build": "cd frontend && npm run build",
     "prod": "cross-env NODE_ENV=production node src/index.js",
     "test": "cross-env NODE_ENV=test node src/index.js",
     "api": "node src/api/server.js",
@@ -16,7 +22,6 @@
     "lint:fix": "eslint src/ --fix",
     "test:unit": "node src/test/unit-tests.js",
     "test:integration": "node src/test/integration-tests.js",
-    "build": "echo Build completed",
     "clean": "node src/scripts/clean.js"
   },
   "keywords": [
@@ -30,18 +35,24 @@
   "author": "XMLitz Team",
   "license": "MIT",
   "dependencies": {
+    "archiver": "^7.0.1",
+    "better-sqlite3": "^12.2.0",
     "compression": "^1.7.4",
     "cors": "^2.8.5",
     "express": "^4.21.2",
+    "fast-xml-parser": "^5.2.5",
     "fs-extra": "^11.1.1",
     "helmet": "^7.0.0",
     "moment": "^2.29.4",
+    "multer": "^2.0.2",
     "node-cron": "^3.0.2",
+    "node-fetch": "^3.3.2",
     "puppeteer": "^24.16.2",
     "uuid": "^9.0.0",
     "winston": "^3.10.0"
   },
   "devDependencies": {
+    "concurrently": "^8.2.2",
     "cross-env": "^7.0.3",
     "eslint": "^8.45.0",
     "nodemon": "^3.0.1"

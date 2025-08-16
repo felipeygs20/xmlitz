@@ -8,6 +8,7 @@ import { StatusController } from '../controllers/StatusController.js';
 import { DownloadController } from '../controllers/DownloadController.js';
 import { ExecutionController } from '../controllers/ExecutionController.js';
 import { HealthController } from '../controllers/HealthController.js';
+import nfseRoutes from '../nfseRoutes.js';
 
 /**
  * Configura todas as rotas da API
@@ -36,7 +37,10 @@ export function setupRoutes(app, config, executionManager) {
     // Rotas de gerenciamento
     router.post('/executions/:id/retry', executionController.retryExecution.bind(executionController));
     router.get('/stats', executionController.getStats.bind(executionController));
-    
+
+    // Rotas de NFSe
+    app.use('/nfse', nfseRoutes);
+
     // Aplicar rotas ao app
     app.use('/', router);
     

@@ -77,7 +77,7 @@ export class Logger {
      */
     async writeToFile(formattedMessage) {
         try {
-            await fs.appendFile(this.logFile, formattedMessage + '\n');
+            await fs.appendFile(this.logFile, formattedMessage + '\n', { encoding: 'utf8' });
         } catch (error) {
             console.error('Erro ao escrever no arquivo de log:', error.message);
         }
@@ -89,59 +89,59 @@ export class Logger {
     error(message, metadata = {}) {
         if (this.currentLevel >= this.levels.ERROR) {
             const formatted = this.formatMessage(this.levels.ERROR, message, metadata);
-            console.error(`❌ ${message}`, metadata);
+            console.error(`[ERROR] ${message}`, metadata);
             this.writeToFile(formatted);
         }
     }
-    
+
     /**
      * Log de aviso
      */
     warn(message, metadata = {}) {
         if (this.currentLevel >= this.levels.WARN) {
             const formatted = this.formatMessage(this.levels.WARN, message, metadata);
-            console.warn(`⚠️ ${message}`, metadata);
+            console.warn(`[WARN] ${message}`, metadata);
             this.writeToFile(formatted);
         }
     }
-    
+
     /**
      * Log de informação
      */
     info(message, metadata = {}) {
         if (this.currentLevel >= this.levels.INFO) {
             const formatted = this.formatMessage(this.levels.INFO, message, metadata);
-            console.log(`ℹ️ ${message}`, metadata);
+            console.log(`[INFO] ${message}`, metadata);
             this.writeToFile(formatted);
         }
     }
-    
+
     /**
      * Log de debug
      */
     debug(message, metadata = {}) {
         if (this.currentLevel >= this.levels.DEBUG) {
             const formatted = this.formatMessage(this.levels.DEBUG, message, metadata);
-            console.log(`🔍 ${message}`, metadata);
+            console.log(`[DEBUG] ${message}`, metadata);
             this.writeToFile(formatted);
         }
     }
-    
+
     /**
      * Log de sucesso
      */
     success(message, metadata = {}) {
         const formatted = this.formatMessage(this.levels.INFO, `SUCCESS: ${message}`, metadata);
-        console.log(`✅ ${message}`, metadata);
+        console.log(`[SUCCESS] ${message}`, metadata);
         this.writeToFile(formatted);
     }
-    
+
     /**
      * Log de progresso
      */
     progress(message, metadata = {}) {
         const formatted = this.formatMessage(this.levels.INFO, `PROGRESS: ${message}`, metadata);
-        console.log(`📊 ${message}`, metadata);
+        console.log(`[PROGRESS] ${message}`, metadata);
         this.writeToFile(formatted);
     }
     

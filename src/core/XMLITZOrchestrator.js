@@ -8,13 +8,22 @@ import { AuthenticationService } from './AuthenticationService.js';
 import { NavigationService } from './NavigationService.js';
 import { SearchService } from './SearchService.js';
 import { DownloadService } from './DownloadService.js';
-import { Logger } from '../utils/Logger.js';
+import { logger } from '../utils/OptimizedLogger.js';
 import { ErrorHandler } from '../utils/ErrorHandler.js';
 
 export class XMLITZOrchestrator {
     constructor(configManager) {
         this.config = configManager;
-        this.logger = Logger.getInstance();
+        this.logger = logger;
+
+        // Configurar logger otimizado
+        this.logger.configure({
+            compactMode: true,
+            enableRequestLogs: false,
+            enableDebugLogs: false,
+            maxLogLength: 150
+        });
+
         this.errorHandler = ErrorHandler.getInstance();
         
         // Inicializar serviços
@@ -42,7 +51,7 @@ export class XMLITZOrchestrator {
         this.stats.startTime = Date.now();
         
         try {
-            this.logger.info('Iniciando processo XMLITZ');
+            this.logger.system('Iniciando processo XMLITZ');
             
             // 1. Inicializar navegador
             await this.initializeBrowser();
@@ -56,7 +65,7 @@ export class XMLITZOrchestrator {
             // 4. Executar busca e download
             await this.executeSearchAndDownload();
             
-            this.logger.success('Processo XMLITZ concluído com sucesso');
+            this.logger.success('Processo concluído com sucesso');
             
             return this.generateReport();
             
@@ -78,11 +87,20 @@ export class XMLITZOrchestrator {
             const browser = await this.browserManager.initialize();
             const page = await this.browserManager.createPage();
             
+            // Inicializar FileManager no DownloadService
+            await this.downloadService.initialize();
+
             // Compartilhar instâncias com outros serviços
             this.authService.setBrowser(browser, page);
             this.navigationService.setBrowser(browser, page);
             this.searchService.setBrowser(browser, page);
             this.downloadService.setBrowser(browser, page);
+
+            // Compartilhar path organizado com DownloadService
+            const organizedPath = this.browserManager.getOrganizedDownloadPath();
+            if (organizedPath) {
+                this.downloadService.setOrganizedDownloadPath(organizedPath);
+            }
             
             this.logger.success('Navegador inicializado');
             
@@ -220,15 +238,26 @@ export class XMLITZOrchestrator {
         const successRate = this.stats.notesFound > 0 ? 
             Math.round((this.stats.xmlsDownloaded / this.stats.notesFound) * 100) : 0;
         
+        // Obter estatísticas do FileManager e gerar log de resumo
+        const downloadStats = this.downloadService.downloadStats;
+        this.downloadService.logDuplicateSummary();
+
         const report = {
             success: this.stats.xmlsDownloaded > 0,
             duration: duration,
             pagesProcessed: this.stats.pagesProcessed,
             notesFound: this.stats.notesFound,
             xmlsDownloaded: this.stats.xmlsDownloaded,
+            xmlsSkipped: downloadStats.skipped || 0,
+            duplicatesDetected: downloadStats.duplicates || 0,
             failures: this.stats.failures,
             successRate: successRate,
-            downloadPath: this.config.get('download.path')
+            downloadPath: this.config.get('download.path'),
+            intelligentFileManagement: {
+                duplicateDetection: true,
+                multiCNPJSupport: true,
+                preserveExisting: true
+            }
         };
         
         this.logger.info('Relatório final gerado', report);

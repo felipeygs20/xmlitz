@@ -15,7 +15,7 @@ export class ExecutionManager {
         
         this.executions = new Map();
         this.executionCounter = 0;
-        this.maxConcurrentExecutions = 3;
+        this.maxConcurrentExecutions = 50; // Aumentado para permitir mais execuções concorrentes
         this.runningExecutions = 0;
     }
     

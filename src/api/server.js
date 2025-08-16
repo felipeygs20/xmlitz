@@ -11,7 +11,7 @@ import compression from 'compression';
 import helmet from 'helmet';
 
 import { ConfigManager } from '../config/ConfigManager.js';
-import { Logger } from '../utils/Logger.js';
+import { logger } from '../utils/OptimizedLogger.js';
 import { ErrorHandler } from '../utils/ErrorHandler.js';
 
 import { setupRoutes } from './routes/index.js';
@@ -22,7 +22,14 @@ class XMLITZAPIServer {
     constructor() {
         this.app = express();
         this.port = process.env.PORT || 3000;
-        this.logger = Logger.getInstance();
+        this.logger = logger;
+
+        // Configurar logger para API (sem logs de requisições por padrão)
+        this.logger.configure({
+            compactMode: true,
+            enableRequestLogs: false,
+            enableDebugLogs: false
+        });
         this.errorHandler = ErrorHandler.getInstance();
         this.config = null;
         this.executionManager = null;
@@ -86,6 +93,9 @@ class XMLITZAPIServer {
         // Parsing de JSON
         this.app.use(express.json({ limit: '10mb' }));
         this.app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+        // Servir arquivos estáticos (frontend)
+        this.app.use(express.static('public'));
         
         // Headers de resposta
         this.app.use((req, res, next) => {
@@ -233,9 +243,20 @@ class XMLITZAPIServer {
 }
 
 // Inicializar e executar servidor se este arquivo for executado diretamente
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Corrigir para Windows - normalizar caminhos
+import { fileURLToPath } from 'url';
+import { resolve } from 'path';
+
+const currentFile = fileURLToPath(import.meta.url);
+const executedFile = resolve(process.argv[1]);
+
+if (currentFile === executedFile) {
+    console.log('🔧 Iniciando servidor XMLITZ API...');
     const server = new XMLITZAPIServer();
-    server.start();
+    server.start().catch(error => {
+        console.error('❌ Erro ao iniciar servidor:', error);
+        process.exit(1);
+    });
 }
 
 export default XMLITZAPIServer;

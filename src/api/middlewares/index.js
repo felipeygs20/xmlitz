@@ -73,7 +73,7 @@ function requestLoggingMiddleware(logger) {
 function rateLimitingMiddleware() {
     const requests = new Map();
     const windowMs = 15 * 60 * 1000; // 15 minutos
-    const maxRequests = 100; // máximo 100 requests por IP por janela
+    const maxRequests = 500; // máximo 500 requests por IP por janela (aumentado)
     
     return (req, res, next) => {
         const ip = req.ip || req.connection.remoteAddress;

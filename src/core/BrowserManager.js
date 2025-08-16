@@ -15,6 +15,7 @@ export class BrowserManager {
         
         this.browser = null;
         this.page = null;
+        this.organizedDownloadPath = null;
     }
     
     /**
@@ -27,23 +28,33 @@ export class BrowserManager {
             const browserConfig = this.config.get('browser');
             const isHeadless = browserConfig.headless;
             
-            this.browser = await puppeteer.launch({
-                headless: isHeadless,
+            // Configurações otimizadas para Windows
+            const launchOptions = {
+                headless: isHeadless ? 'new' : false,
                 defaultViewport: null,
+                protocolTimeout: 60000, // 1 minuto (reduzido)
                 args: [
-                    '--start-maximized',
                     '--no-sandbox',
                     '--disable-setuid-sandbox',
-                    '--disable-web-security',
-                    '--disable-features=VizDisplayCompositor',
-                    '--disable-blink-features=AutomationControlled',
-                    '--disable-extensions',
+                    '--disable-dev-shm-usage',
+                    '--disable-accelerated-2d-canvas',
                     '--no-first-run',
-                    '--disable-default-apps'
+                    '--no-zygote',
+                    '--single-process',
+                    '--disable-gpu',
+                    '--disable-background-timer-throttling', // Performance
+                    '--disable-backgrounding-occluded-windows',
+                    '--disable-renderer-backgrounding',
+                    '--disable-features=VizDisplayCompositor',
+                    '--disable-ipc-flooding-protection',
+                    '--disable-extensions',
+                    '--disable-plugins',
+                    '--disable-web-security'
                 ],
-                ignoreDefaultArgs: ['--enable-automation'],
                 ignoreHTTPSErrors: true
-            });
+            };
+
+            this.browser = await puppeteer.launch(launchOptions);
             
             this.logger.success('Navegador inicializado', {
                 headless: isHeadless,
@@ -77,12 +88,36 @@ export class BrowserManager {
                 deviceScaleFactor: 1
             });
             
-            // Configurar diretório de download
-            const downloadPath = this.config.get('download.path');
+            // Configurar diretório de download organizado
+            const organizedDownloadPath = this.createOrganizedDownloadPath();
+            this.organizedDownloadPath = organizedDownloadPath;
+
+            // Criar diretório de download se não existir
+            const fs = await import('fs-extra');
+            const path = await import('path');
+            const absoluteDownloadPath = path.resolve(organizedDownloadPath);
+            await fs.ensureDir(absoluteDownloadPath);
+            this.logger.info('Diretório de download organizado criado', { path: absoluteDownloadPath });
+
+            // Configurar comportamento de download via CDP
             const client = await this.page.createCDPSession();
             await client.send('Page.setDownloadBehavior', {
                 behavior: 'allow',
-                downloadPath: downloadPath
+                downloadPath: absoluteDownloadPath,
+                eventsEnabled: true
+            });
+
+            // Armazenar path organizado no config para outros serviços
+            try {
+                this.config.set('download.organizedPath', absoluteDownloadPath);
+            } catch (error) {
+                this.logger.debug('Não foi possível armazenar path organizado no config');
+            }
+
+            // Configurar headers otimizados
+            await this.page.setExtraHTTPHeaders({
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             });
             
             // Configurar User-Agent para evitar detecção de bot
@@ -107,9 +142,12 @@ export class BrowserManager {
             
             // Configurar tratamento de erros de página
             this.setupPageErrorHandlers();
+
+            // Configurar interceptação de requisições desnecessárias
+            this.setupRequestInterception();
             
             this.logger.success('Página criada e configurada', {
-                downloadPath: downloadPath,
+                downloadPath: organizedDownloadPath,
                 viewport: `${browserConfig.width}x${browserConfig.height}`
             });
             
@@ -142,6 +180,39 @@ export class BrowserManager {
     }
     
     /**
+     * Configura interceptação de requisições desnecessárias
+     */
+    async setupRequestInterception() {
+        await this.page.setRequestInterception(true);
+
+        this.page.on('request', (request) => {
+            const url = request.url();
+
+            // Bloquear requisições de analytics, tracking e recursos desnecessários
+            if (url.includes('cdn-cgi/rum') ||
+                url.includes('analytics') ||
+                url.includes('tracking') ||
+                url.includes('gtag') ||
+                url.includes('google-analytics') ||
+                url.includes('facebook.com') ||
+                url.includes('doubleclick.net') ||
+                url.includes('.css') ||
+                url.includes('.woff') ||
+                url.includes('.ttf') ||
+                url.includes('.png') ||
+                url.includes('.jpg') ||
+                url.includes('.jpeg') ||
+                url.includes('.gif') ||
+                url.includes('.svg')) {
+                request.abort();
+                return;
+            }
+
+            request.continue();
+        });
+    }
+
+    /**
      * Configura tratamento de erros de página
      */
     setupPageErrorHandlers() {
@@ -154,8 +225,18 @@ export class BrowserManager {
         });
         
         this.page.on('requestfailed', request => {
+            const url = request.url();
+            // Ignorar falhas de analytics e tracking que não são críticas
+            if (url.includes('cdn-cgi/rum') ||
+                url.includes('analytics') ||
+                url.includes('tracking') ||
+                url.includes('gtag') ||
+                url.includes('google-analytics')) {
+                return; // Não logar essas falhas
+            }
+
             this.logger.warn('Requisição falhou', {
-                url: request.url(),
+                url: url,
                 method: request.method(),
                 failure: request.failure()?.errorText
             });
@@ -297,11 +378,50 @@ export class BrowserManager {
     getPage() {
         return this.page;
     }
+
+    getOrganizedDownloadPath() {
+        return this.organizedDownloadPath;
+    }
     
     /**
      * Verifica se o navegador está ativo
      */
     isActive() {
         return this.browser !== null && this.page !== null;
+    }
+
+    /**
+     * Cria path organizado para downloads: ANO/MÊS/CNPJ
+     */
+    createOrganizedDownloadPath() {
+        try {
+            // Obter configurações
+            const baseDownloadPath = this.config.get('download.path');
+            const cnpj = this.config.get('credentials.username') || '32800353000162';
+            const searchPeriod = this.config.get('searchPeriod');
+
+            // Extrair ano e mês da data de início (forçar timezone local)
+            const dateStr = searchPeriod.startDate || '2025-07-01';
+            const [yearStr, monthStr] = dateStr.split('-');
+            const year = yearStr;
+            const month = monthStr;
+
+            // Criar estrutura: downloads/ANO/MÊS/CNPJ usando separador do sistema
+            const organizedPath = `${baseDownloadPath}/${year}/${month}/${cnpj}`.replace(/\//g, process.platform === 'win32' ? '\\' : '/');
+
+            this.logger.debug('Path organizado criado', {
+                base: baseDownloadPath,
+                year: year,
+                month: month,
+                cnpj: cnpj,
+                final: organizedPath
+            });
+
+            return organizedPath;
+
+        } catch (error) {
+            this.logger.warn('Erro ao criar path organizado, usando padrão', { error: error.message });
+            return this.config.get('download.path');
+        }
     }
 }
