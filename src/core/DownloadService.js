@@ -948,19 +948,32 @@ export class DownloadService {
     }
     
     /**
-     * Obtém arquivos existentes com cache para otimização
+     * Obtém arquivos existentes com cache inteligente para otimização
      */
     async getCachedExistingFiles(cnpj, startDate) {
+        // Usar o CacheManager integrado do FileManager
+        if (this.fileManager && this.fileManager.cacheManager) {
+            const cachedFiles = this.fileManager.cacheManager.getFileCache(cnpj, startDate);
+            if (cachedFiles) {
+                this.logger.debug('📋 Usando cache inteligente de arquivos existentes', {
+                    cnpj: this.fileManager.maskCNPJ(cnpj),
+                    fileCount: cachedFiles.length
+                });
+                return cachedFiles;
+            }
+        }
+
+        // Fallback para cache local (compatibilidade)
         const now = Date.now();
         const cacheTimeout = 30000; // 30 segundos
 
-        // Verificar se o cache é válido
+        // Verificar se o cache local é válido
         if (this.fileCache.existingFiles &&
             this.fileCache.cnpj === cnpj &&
             this.fileCache.lastCheck &&
             (now - this.fileCache.lastCheck) < cacheTimeout) {
 
-            this.logger.debug('📋 Usando cache de arquivos existentes', {
+            this.logger.debug('📋 Usando cache local de arquivos existentes', {
                 cnpj: this.fileManager.maskCNPJ(cnpj),
                 cacheAge: Math.round((now - this.fileCache.lastCheck) / 1000),
                 fileCount: this.fileCache.existingFiles.length
@@ -972,15 +985,22 @@ export class DownloadService {
         // Buscar arquivos e atualizar cache
         const existingFiles = await this.fileManager.listCNPJFiles(cnpj, startDate);
 
+        // Atualizar cache inteligente se disponível
+        if (this.fileManager && this.fileManager.cacheManager) {
+            this.fileManager.cacheManager.setFileCache(cnpj, startDate, existingFiles);
+        }
+
+        // Manter cache local para compatibilidade
         this.fileCache = {
             existingFiles,
-            lastCheck: now,
+            lastCheck: Date.now(),
             cnpj
         };
 
         this.logger.debug('🔄 Cache de arquivos atualizado', {
             cnpj: this.fileManager.maskCNPJ(cnpj),
-            fileCount: existingFiles.length
+            fileCount: existingFiles.length,
+            cacheType: this.fileManager.cacheManager ? 'inteligente' : 'local'
         });
 
         return existingFiles;

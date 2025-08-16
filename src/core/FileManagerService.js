@@ -20,10 +20,16 @@ export class FileManagerService {
             this.fs = await import('fs-extra');
             this.path = await import('path');
             this.crypto = await import('crypto');
+
+            // Inicializar cache manager
+            const { getCacheManager } = await import('./CacheManager.js');
+            this.cacheManager = getCacheManager();
+
             this.logger.info('🧠 FileManagerService inicializado com sucesso', {
                 hasFs: !!this.fs,
                 hasPath: !!this.path,
-                hasCrypto: !!this.crypto
+                hasCrypto: !!this.crypto,
+                hasCache: !!this.cacheManager
             });
         } catch (error) {
             this.logger.error('❌ Erro ao inicializar FileManagerService', {
@@ -156,17 +162,40 @@ export class FileManagerService {
                 return null;
             }
 
-            // Ler e extrair dados do arquivo novo
-            const newFileContent = await this.fs.readFile(sourceFile, 'utf8');
-            const newFileData = this.extractXMLData(newFileContent);
+            // Verificar cache de duplicatas primeiro
+            const cacheKey = this.cacheManager.generateDuplicateKey(sourceFile, cnpjPath, 'xml');
+            const cachedResult = this.cacheManager.getDuplicateCache(cacheKey);
+            if (cachedResult !== null) {
+                this.logger.debug('Resultado de duplicata XML obtido do cache', {
+                    file: this.path.basename(sourceFile),
+                    cached: true
+                });
+                return cachedResult;
+            }
 
-            this.logger.debug('🔍 Dados extraídos do XML novo', {
-                sourceFile: this.path.basename(sourceFile),
-                numero: newFileData.numero,
-                codigoVerificacao: newFileData.codigoVerificacao ? newFileData.codigoVerificacao.substring(0, 8) + '...' : null,
-                hasNumero: !!newFileData.numero,
-                hasCodigo: !!newFileData.codigoVerificacao
-            });
+            // Verificar cache de dados XML primeiro
+            let newFileData = this.cacheManager.getXMLDataCache(sourceFile);
+            if (!newFileData) {
+                const newFileContent = await this.fs.readFile(sourceFile, 'utf8');
+                newFileData = this.extractXMLData(newFileContent);
+
+                // Armazenar dados XML no cache
+                this.cacheManager.setXMLDataCache(sourceFile, newFileData);
+
+                this.logger.debug('🔍 Dados XML extraídos e armazenados no cache', {
+                    sourceFile: this.path.basename(sourceFile),
+                    numero: newFileData.numero,
+                    codigoVerificacao: newFileData.codigoVerificacao ? newFileData.codigoVerificacao.substring(0, 8) + '...' : null,
+                    hasNumero: !!newFileData.numero,
+                    hasCodigo: !!newFileData.codigoVerificacao
+                });
+            } else {
+                this.logger.debug('🔍 Dados XML obtidos do cache', {
+                    sourceFile: this.path.basename(sourceFile),
+                    numero: newFileData.numero,
+                    cached: true
+                });
+            }
 
             if (!newFileData.numero || !newFileData.codigoVerificacao) {
                 this.logger.debug('❌ Não foi possível extrair dados do XML novo', {
@@ -174,6 +203,9 @@ export class FileManagerService {
                     numero: newFileData.numero,
                     codigoVerificacao: newFileData.codigoVerificacao
                 });
+
+                // Armazenar resultado negativo no cache
+                this.cacheManager.setDuplicateCache(cacheKey, null);
                 return null;
             }
 
@@ -191,8 +223,16 @@ export class FileManagerService {
             for (const existingFile of xmlFiles) {
                 try {
                     const existingPath = this.path.join(cnpjPath, existingFile);
-                    const existingContent = await this.fs.readFile(existingPath, 'utf8');
-                    const existingData = this.extractXMLData(existingContent);
+
+                    // Verificar cache de dados XML para arquivo existente
+                    let existingData = this.cacheManager.getXMLDataCache(existingPath);
+                    if (!existingData) {
+                        const existingContent = await this.fs.readFile(existingPath, 'utf8');
+                        existingData = this.extractXMLData(existingContent);
+
+                        // Armazenar dados XML no cache
+                        this.cacheManager.setXMLDataCache(existingPath, existingData);
+                    }
 
                     // Comparar Número + CodigoVerificacao
                     if (existingData.numero === newFileData.numero &&
@@ -205,6 +245,8 @@ export class FileManagerService {
                             codigoVerificacao: newFileData.codigoVerificacao.substring(0, 8) + '...'
                         });
 
+                        // Armazenar resultado no cache
+                        this.cacheManager.setDuplicateCache(cacheKey, existingFile);
                         return existingFile;
                     }
                 } catch (fileError) {
@@ -215,6 +257,9 @@ export class FileManagerService {
                     continue;
                 }
             }
+
+            // Armazenar resultado negativo no cache
+            this.cacheManager.setDuplicateCache(cacheKey, null);
 
             return null;
 
@@ -293,7 +338,7 @@ export class FileManagerService {
     }
 
     /**
-     * Verifica duplicatas por conteúdo (hash MD5) - versão otimizada
+     * Verifica duplicatas por conteúdo (hash MD5) - versão otimizada com cache
      */
     async checkContentDuplicate(filePath, cnpjPath) {
         try {
@@ -308,14 +353,37 @@ export class FileManagerService {
                 return null;
             }
 
-            const fileContent = await this.fs.readFile(filePath);
-            const fileHash = this.crypto.createHash('md5').update(fileContent).digest('hex');
+            // Verificar cache de duplicatas primeiro
+            const cacheKey = this.cacheManager.generateDuplicateKey(filePath, cnpjPath, 'md5');
+            const cachedResult = this.cacheManager.getDuplicateCache(cacheKey);
+            if (cachedResult !== null) {
+                this.logger.debug('Resultado de duplicata obtido do cache', {
+                    file: this.path.basename(filePath),
+                    cached: true
+                });
+                return cachedResult;
+            }
 
-            this.logger.debug('Calculando hash MD5 para verificação', {
-                file: this.path.basename(filePath),
-                hash: fileHash.substring(0, 8),
-                size: fileContent.length
-            });
+            // Verificar cache de hash primeiro
+            let fileHash = this.cacheManager.getHashCache(filePath);
+            if (!fileHash) {
+                const fileContent = await this.fs.readFile(filePath);
+                fileHash = this.crypto.createHash('md5').update(fileContent).digest('hex');
+
+                // Armazenar hash no cache
+                this.cacheManager.setHashCache(filePath, fileHash);
+
+                this.logger.debug('Hash MD5 calculado e armazenado no cache', {
+                    file: this.path.basename(filePath),
+                    hash: fileHash.substring(0, 8),
+                    size: fileContent.length
+                });
+            } else {
+                this.logger.debug('Hash MD5 obtido do cache', {
+                    file: this.path.basename(filePath),
+                    hash: fileHash.substring(0, 8)
+                });
+            }
 
             // Verificar todos os arquivos XML no diretório CNPJ
             const files = await this.fs.readdir(cnpjPath);
@@ -331,17 +399,25 @@ export class FileManagerService {
                 const existingPath = this.path.join(cnpjPath, existingFile);
 
                 try {
-                    const existingContent = await this.fs.readFile(existingPath);
-                    const existingHash = this.crypto.createHash('md5').update(existingContent).digest('hex');
+                    // Verificar cache de hash para arquivo existente
+                    let existingHash = this.cacheManager.getHashCache(existingPath);
+                    if (!existingHash) {
+                        const existingContent = await this.fs.readFile(existingPath);
+                        existingHash = this.crypto.createHash('md5').update(existingContent).digest('hex');
+
+                        // Armazenar no cache
+                        this.cacheManager.setHashCache(existingPath, existingHash);
+                    }
 
                     if (fileHash === existingHash) {
                         this.logger.info('🔄 Duplicata detectada por conteúdo MD5', {
                             newFile: this.path.basename(filePath),
                             existingFile,
-                            hash: fileHash.substring(0, 8),
-                            newSize: fileContent.length,
-                            existingSize: existingContent.length
+                            hash: fileHash.substring(0, 8)
                         });
+
+                        // Armazenar resultado no cache
+                        this.cacheManager.setDuplicateCache(cacheKey, existingFile);
                         return existingFile;
                     }
                 } catch (fileError) {
@@ -358,6 +434,8 @@ export class FileManagerService {
                 checkedFiles: xmlFiles.length
             });
 
+            // Armazenar resultado negativo no cache
+            this.cacheManager.setDuplicateCache(cacheKey, null);
             return null;
 
         } catch (error) {

@@ -49,27 +49,45 @@ export class XMLITZOrchestrator {
      */
     async execute() {
         this.stats.startTime = Date.now();
-        
+
+        // Iniciar timer de performance
+        this.logger.startTimer('xmlitz-execution');
+
         try {
             this.logger.system('Iniciando processo XMLITZ');
-            
+
             // 1. Inicializar navegador
+            this.logger.startTimer('browser-init');
             await this.initializeBrowser();
-            
+            this.logger.endTimer('browser-init');
+
             // 2. Executar autenticação
+            this.logger.startTimer('authentication');
             await this.authenticate();
-            
+            this.logger.endTimer('authentication');
+
             // 3. Navegar para relatórios
+            this.logger.startTimer('navigation');
             await this.navigateToReports();
-            
+            this.logger.endTimer('navigation');
+
             // 4. Executar busca e download
+            this.logger.startTimer('search-download');
             await this.executeSearchAndDownload();
-            
+            this.logger.endTimer('search-download');
+
             this.logger.success('Processo concluído com sucesso');
-            
+
+            const totalDuration = this.logger.endTimer('xmlitz-execution');
+            this.logger.performance('Execução completa', totalDuration, {
+                success: true,
+                stats: this.stats
+            });
+
             return this.generateReport();
-            
+
         } catch (error) {
+            this.logger.endTimer('xmlitz-execution');
             this.errorHandler.handle(error, 'orchestrator-execute');
             throw error;
         } finally {

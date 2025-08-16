@@ -123,10 +123,31 @@ export class NFSeDatabase {
 
 
     /**
-     * Insere um lote de NFSe
+     * Verifica se um lote já existe pelo checksum
+     */
+    batchExists(checksum) {
+        this.ensureInitialized();
+
+        const existing = this.db.prepare('SELECT id FROM nfse_batches WHERE checksum = ?')
+            .get(checksum);
+        return existing?.id || null;
+    }
+
+    /**
+     * Insere um lote de NFSe (otimizado para evitar duplicatas)
      */
     insertBatch(batchData) {
         this.ensureInitialized();
+
+        // Verificar se já existe antes de tentar inserir
+        const existingId = this.batchExists(batchData.checksum);
+        if (existingId) {
+            logger.trace('Lote já existe, retornando ID existente', {
+                id: existingId,
+                checksum: batchData.checksum?.substring(0, 8) + '...'
+            });
+            return existingId;
+        }
 
         const stmt = this.db.prepare(`
             INSERT INTO nfse_batches (
@@ -158,9 +179,10 @@ export class NFSeDatabase {
 
         } catch (error) {
             if (error.code === 'SQLITE_CONSTRAINT_UNIQUE') {
-                logger.warn('Lote já existe no banco', { 
-                    checksum: batchData.checksum,
-                    filename: batchData.filename 
+                // Log apenas em debug para reduzir ruído
+                logger.debug('Lote já existe no banco (duplicata ignorada)', {
+                    checksum: batchData.checksum?.substring(0, 8) + '...',
+                    filename: batchData.filename
                 });
                 
                 // Retornar ID do lote existente

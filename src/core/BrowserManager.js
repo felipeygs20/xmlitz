@@ -180,35 +180,73 @@ export class BrowserManager {
     }
     
     /**
-     * Configura interceptação de requisições desnecessárias
+     * Configura interceptação de requisições desnecessárias - OTIMIZADO
      */
     async setupRequestInterception() {
         await this.page.setRequestInterception(true);
 
+        // Cache de URLs bloqueadas para performance
+        const blockedUrlCache = new Set();
+
+        // Contadores para métricas
+        let blockedRequests = 0;
+        let allowedRequests = 0;
+
         this.page.on('request', (request) => {
             const url = request.url();
+            const resourceType = request.resourceType();
 
-            // Bloquear requisições de analytics, tracking e recursos desnecessários
-            if (url.includes('cdn-cgi/rum') ||
+            // Cache check para performance
+            if (blockedUrlCache.has(url)) {
+                blockedRequests++;
+                request.abort();
+                return;
+            }
+
+            // Bloquear por tipo de recurso (mais eficiente)
+            if (resourceType === 'stylesheet' ||
+                resourceType === 'image' ||
+                resourceType === 'font' ||
+                resourceType === 'media') {
+                blockedUrlCache.add(url);
+                blockedRequests++;
+                request.abort();
+                return;
+            }
+
+            // Bloquear URLs específicas de analytics e tracking
+            const shouldBlock = url.includes('cdn-cgi/rum') ||
                 url.includes('analytics') ||
                 url.includes('tracking') ||
                 url.includes('gtag') ||
                 url.includes('google-analytics') ||
                 url.includes('facebook.com') ||
                 url.includes('doubleclick.net') ||
-                url.includes('.css') ||
-                url.includes('.woff') ||
-                url.includes('.ttf') ||
-                url.includes('.png') ||
-                url.includes('.jpg') ||
-                url.includes('.jpeg') ||
-                url.includes('.gif') ||
-                url.includes('.svg')) {
+                url.includes('fontawesome') ||
+                url.includes('cdnjs.cloudflare.com');
+
+            if (shouldBlock) {
+                blockedUrlCache.add(url);
+                blockedRequests++;
                 request.abort();
                 return;
             }
 
+            allowedRequests++;
             request.continue();
+        });
+
+        // Log de métricas a cada 50 requests
+        let totalRequests = 0;
+        this.page.on('request', () => {
+            totalRequests++;
+            if (totalRequests % 50 === 0) {
+                this.logger.debug('Métricas de interceptação', {
+                    blocked: blockedRequests,
+                    allowed: allowedRequests,
+                    blockRate: `${((blockedRequests / totalRequests) * 100).toFixed(1)}%`
+                });
+            }
         });
     }
 
@@ -224,22 +262,60 @@ export class BrowserManager {
             this.errorHandler.handle(error, 'page-javascript-error');
         });
         
+        // Contador de falhas para métricas
+        let failedRequests = 0;
+        let criticalFailures = 0;
+
         this.page.on('requestfailed', request => {
             const url = request.url();
-            // Ignorar falhas de analytics e tracking que não são críticas
-            if (url.includes('cdn-cgi/rum') ||
-                url.includes('analytics') ||
-                url.includes('tracking') ||
-                url.includes('gtag') ||
-                url.includes('google-analytics')) {
-                return; // Não logar essas falhas
+            const resourceType = request.resourceType();
+            const failure = request.failure();
+
+            failedRequests++;
+
+            // Lista expandida de recursos não críticos
+            const nonCriticalResources = [
+                'stylesheet', 'image', 'font', 'media'
+            ];
+
+            const nonCriticalUrls = [
+                'cdn-cgi/rum', 'analytics', 'tracking', 'gtag',
+                'google-analytics', 'fontawesome', 'cdnjs.cloudflare.com',
+                'undraw_profile.svg', 'logo-menor.png', 'animate.css',
+                'sb-admin-2', 'all.min.css'
+            ];
+
+            // Verificar se é recurso não crítico
+            const isNonCritical = nonCriticalResources.includes(resourceType) ||
+                                 nonCriticalUrls.some(pattern => url.includes(pattern));
+
+            if (isNonCritical) {
+                // Log apenas em debug para recursos não críticos
+                this.logger.debug('Recurso não crítico falhou', {
+                    url: url.substring(0, 100) + '...',
+                    type: resourceType,
+                    error: failure?.errorText
+                });
+                return;
             }
 
-            this.logger.warn('Requisição falhou', {
+            // Log apenas falhas críticas
+            criticalFailures++;
+            this.logger.warn('Requisição crítica falhou', {
                 url: url,
                 method: request.method(),
-                failure: request.failure()?.errorText
+                type: resourceType,
+                failure: failure?.errorText
             });
+
+            // Log de métricas a cada 25 falhas
+            if (failedRequests % 25 === 0) {
+                this.logger.info('Métricas de falhas de requisição', {
+                    totalFailed: failedRequests,
+                    criticalFailed: criticalFailures,
+                    nonCriticalFailed: failedRequests - criticalFailures
+                });
+            }
         });
         
         this.page.on('response', response => {
